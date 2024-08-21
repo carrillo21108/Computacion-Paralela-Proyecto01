@@ -40,6 +40,45 @@ class Particula {
     }
 };
 
+
+class Cohete {
+public:
+    float x, y;
+    bool exploded;
+    std::vector<Particula> particulas;
+
+    Cohete(float x) {
+        this->x = x;
+        this->y = HEIGHT;
+        this->exploded = false;
+    }
+
+    void update() {
+        if (!exploded) {
+            y -= 3; 
+            if (y < HEIGHT / 2) {
+                explode();
+            }
+        } else {
+            for (auto& p : particulas) {
+                p.update();
+            }
+        }
+    }
+
+    void explode() {
+        exploded = true;
+        for (int i = 0; i < 100; i++) {
+            particulas.push_back(Particula(x, y));
+        }
+    }
+
+    bool isDone() {
+        return exploded && particulas.empty();
+    }
+};
+
+
 int main(int argc, char* argv[]) {
     // Inicialización de SDL
     if (SDL_Init(SDL_INIT_VIDEO) < 0) {
