@@ -73,6 +73,20 @@ public:
         }
     }
 
+    void render(SDL_Renderer* renderer) {
+        SDL_SetRenderDrawColor(renderer, 255, 255, 255, 255);
+        SDL_Rect rect = { static_cast<int>(x - 2), static_cast<int>(y), 4, 8 };
+        SDL_RenderFillRect(renderer, &rect);
+
+        if (exploded) {
+            for (auto& p : particulas) {
+                SDL_SetRenderDrawColor(renderer, p.r, p.g, p.b, 255);
+                SDL_Rect particleRect = { static_cast<int>(p.x), static_cast<int>(p.y), p.size, p.size };
+                SDL_RenderFillRect(renderer, &particleRect);
+            }
+        }
+    }
+
     bool isDone() {
         return exploded && particulas.empty();
     }
