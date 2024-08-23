@@ -54,15 +54,14 @@ public:
     }
 
     void update() {
-        if (!exploded) {
-            y -= 3; 
-            if (y < HEIGHT / 2) {
-                explode();
-            }
-        } else {
+        if (exploded) {
             for (auto& p : particulas) {
                 p.update();
             }
+            particulas.erase(
+                std::remove_if(particulas.begin(), particulas.end(), [](Particula& p) { return !p.isAlive(); }),
+                particulas.end()
+            );
         }
     }
 
