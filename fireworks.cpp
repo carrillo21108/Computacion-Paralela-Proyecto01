@@ -117,6 +117,9 @@ int main(int argc, char* argv[]) {
     bool quit = false;
     SDL_Event e;
 
+    int frames = 0;
+    Uint32 startTime = SDL_GetTicks();
+
     // Bucle principal del programa
     while (!quit) {
         while (SDL_PollEvent(&e)) {
@@ -127,6 +130,20 @@ int main(int argc, char* argv[]) {
 
         SDL_SetRenderDrawColor(renderer, 0, 0, 0, 255);
         SDL_RenderClear(renderer);
+
+        // Calcular FPS
+        frames++;
+        Uint32 currentTime = SDL_GetTicks();
+        Uint32 deltaTime = currentTime - startTime;
+
+        if (deltaTime >= 1000) {
+            float fps = frames / (deltaTime / 1000.0f);
+            frames = 0;
+            startTime = currentTime;
+
+            std::string fpsText = "FPS: " + std::to_string(static_cast<int>(fps));
+            SDL_SetWindowTitle(window, fpsText.c_str());
+        }
 
         SDL_RenderPresent(renderer);
         SDL_Delay(20);
