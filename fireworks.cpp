@@ -1,37 +1,56 @@
 #include <SDL2/SDL.h>
+#include <random>
 #include <iostream>
+#include <vector>
+#include <cmath>
+#include <algorithm>
 
 #define WIDTH 1024 
 #define HEIGHT 768 
 
-class Particula {
-    public:
-        float x, y; 
-        float vx, vy;
-        int life;
-        int r, g, b;
-        int size;
+using namespace std;
 
-    Particula(float x, float y) {
+class Particula {
+public:
+    float x, y; 
+    float vx, vy;
+    int life;
+    int r, g, b; 
+    int size; 
+
+    Particula(float x, float y, int vidaParticula) {
         this->x = x;
         this->y = y;
-        this->life = rand() % 100 + 50; 
+        this->life = vidaParticula; 
 
-        // Generar velocidad aleatoria
-        this->vx = rand() % 5 - 2;
-        this->vy = rand() % 5 - 2;
+        std::random_device rd;
+        std::mt19937 gen(rd());
+        std::uniform_real_distribution<> dist(0, 2 * M_PI);
 
-        // Color aleatorio
+        float angle = dist(gen);
+        float speed = static_cast<float>(rand() % 3 + 1); 
+
+        this->vx = cos(angle) * speed;
+        this->vy = sin(angle) * speed;
+
         this->r = rand() % 256;
         this->g = rand() % 256;
         this->b = rand() % 256;
 
-        this->size = rand() % 3 + 1;
+        this->size = rand() % 5;
     }
 
     void update() {
         x += vx;
         y += vy;
+
+        if (x <= 0 || x >= WIDTH) {
+            vx = -vx * 0.2f; 
+        }
+        if (y <= 0 || y >= HEIGHT) {
+            vy = -vy * 0.2f; 
+        }
+
         life--;
     }
 
@@ -40,26 +59,40 @@ class Particula {
     }
 };
 
-
 class Cohete {
 public:
-    float x, y;
-    bool exploded;
-    std::vector<Particula> particulas;
+    float x, y; 
+    bool exploded; 
+    float explosionHeight; 
+    vector<Particula> particulas; 
+    int size; 
+    int numParticles; 
+    int vidaParticula; 
 
-    Cohete(float x) {
+    Cohete(float x, int numParticles, int vidaParticula) : numParticles(numParticles), vidaParticula(vidaParticula) {
         this->x = x;
-        this->y = HEIGHT;
-        this->exploded = false;
+        this->y = HEIGHT; 
+        this->exploded = false; 
+        this->size = 3; 
+
+        std::random_device rd;
+        std::mt19937 gen(rd());
+        std::uniform_real_distribution<> distHeight(HEIGHT * 0.25, HEIGHT * 0.75);
+        this->explosionHeight = distHeight(gen);
     }
 
     void update() {
-        if (exploded) {
+        if (!exploded) {
+            y -= 2;
+            if (y < explosionHeight) {
+                explode();
+            }
+        } else {
             for (auto& p : particulas) {
                 p.update();
             }
             particulas.erase(
-                std::remove_if(particulas.begin(), particulas.end(), [](Particula& p) { return !p.isAlive(); }),
+                remove_if(particulas.begin(), particulas.end(), [](Particula& p) { return !p.isAlive(); }),
                 particulas.end()
             );
         }
@@ -67,21 +100,21 @@ public:
 
     void explode() {
         exploded = true;
-        for (int i = 0; i < 100; i++) {
-            particulas.push_back(Particula(x, y));
+        for (int i = 0; i < numParticles; i++) {
+            particulas.push_back(Particula(x, y, vidaParticula));
         }
     }
 
     void render(SDL_Renderer* renderer) {
-        SDL_SetRenderDrawColor(renderer, 255, 255, 255, 255);
-        SDL_Rect rect = { static_cast<int>(x - 2), static_cast<int>(y), 4, 8 };
-        SDL_RenderFillRect(renderer, &rect);
-
-        if (exploded) {
+        if (!exploded) {
+            SDL_SetRenderDrawColor(renderer, 255, 255, 255, 255);
+            SDL_Rect rect = { static_cast<int>(x - size / 2), static_cast<int>(y), size, size * 2 };
+            SDL_RenderFillRect(renderer, &rect); 
+        } else {
             for (auto& p : particulas) {
-                SDL_SetRenderDrawColor(renderer, p.r, p.g, p.b, 255);
-                SDL_Rect particleRect = { static_cast<int>(p.x), static_cast<int>(p.y), p.size, p.size };
-                SDL_RenderFillRect(renderer, &particleRect);
+                SDL_SetRenderDrawColor(renderer, p.r, p.g, p.b, 255); 
+                SDL_Rect rect = { static_cast<int>(p.x), static_cast<int>(p.y), p.size, p.size };
+                SDL_RenderFillRect(renderer, &rect);
             }
         }
     }
@@ -91,9 +124,15 @@ public:
     }
 };
 
-
 int main(int argc, char* argv[]) {
-    // Inicialización de SDL
+    if (argc < 3) {
+        std::cout << "Uso: " << argv[0] << " <cantidad_de_particulas_por_cohete> <vida_de_particulas>" << std::endl;
+        return 1;
+    }
+
+    int numParticles = atoi(argv[1]);
+    int vidaParticula = atoi(argv[2]);
+
     if (SDL_Init(SDL_INIT_VIDEO) < 0) {
         std::cout << "Error initializing SDL: " << SDL_GetError() << std::endl;
         return 1;
@@ -116,11 +155,15 @@ int main(int argc, char* argv[]) {
 
     bool quit = false;
     SDL_Event e;
+    vector<Cohete> cohetes;
+
+    std::random_device rd;
+    std::mt19937 gen(rd());
+    std::uniform_real_distribution<> dist(0, WIDTH);
 
     int frames = 0;
     Uint32 startTime = SDL_GetTicks();
 
-    // Bucle principal del programa
     while (!quit) {
         while (SDL_PollEvent(&e)) {
             if (e.type == SDL_QUIT) {
@@ -128,10 +171,23 @@ int main(int argc, char* argv[]) {
             }
         }
 
+        if (rand() % 100 < 2) {
+            cohetes.push_back(Cohete(dist(gen), numParticles, vidaParticula));
+        }
+
         SDL_SetRenderDrawColor(renderer, 0, 0, 0, 255);
         SDL_RenderClear(renderer);
 
-        // Calcular FPS
+        for (auto& cohete : cohetes) {
+            cohete.update();
+            cohete.render(renderer);
+        }
+
+        cohetes.erase(
+            remove_if(cohetes.begin(), cohetes.end(), [](Cohete& c) { return c.isDone(); }),
+            cohetes.end()
+        );
+
         frames++;
         Uint32 currentTime = SDL_GetTicks();
         Uint32 deltaTime = currentTime - startTime;
@@ -149,7 +205,6 @@ int main(int argc, char* argv[]) {
         SDL_Delay(20);
     }
 
-    // Limpiar recursos y salir
     SDL_DestroyRenderer(renderer);
     SDL_DestroyWindow(window);
     SDL_Quit();
