@@ -203,10 +203,11 @@ int main(int argc, char* argv[]) {
         SDL_RenderClear(renderer);
 
         // Actualizar y renderizar cada cohete
-        for (auto& cohete : cohetes) {
-            cohete.update();
-            cohete.render(renderer);
+        #pragma omp parallel for
+        for (std::size_t i = 0; i < cohetes.size(); i++) {
+            cohetes[i].update();
         }
+
 
         // Eliminar cohetes que han terminado su ciclo
         cohetes.erase(
