@@ -5,6 +5,7 @@
 #include <vector>
 #include <cmath>
 #include <algorithm>
+#include <string>
 
 #define WIDTH 1024 
 #define HEIGHT 768 
@@ -94,11 +95,11 @@ public:
     }
 
     // Actualiza la posición del cohete o de las partículas si ya explotó
-    void update() {
+    void update(const std::string& scheduleType, int chunkSize) {
         if (!exploded) {
             y -= 2; // Velocidad de ascenso más lenta
             if (y < explosionHeight) { // Altura de explosión aleatoria
-                explode();
+                explode(scheduleType, chunkSize); // Pass scheduleType and chunkSize
             }
         } else {
             for (auto& p : particulas) {
@@ -112,15 +113,40 @@ public:
     }
 
     // Genera la explosión del cohete en partículas
-    void explode() {
+    void explode(const std::string& scheduleType, int chunkSize) {
         exploded = true;
-        #pragma omp parallel for
-        for (int i = 0; i < numParticles; i++) {
-            Particula p(x, y, particleLife);
-            #pragma omp critical
-            {
-                particulas.push_back(p);
+        
+        // Dynamic scheduling logic based on input schedule type and chunk size
+        if (scheduleType == "static") {
+            #pragma omp parallel for schedule(static, chunkSize)
+            for (int i = 0; i < numParticles; i++) {
+                Particula p(x, y, particleLife);
+                #pragma omp critical
+                {
+                    particulas.push_back(p);
+                }
             }
+        } else if (scheduleType == "dynamic") {
+            #pragma omp parallel for schedule(dynamic, chunkSize)
+            for (int i = 0; i < numParticles; i++) {
+                Particula p(x, y, particleLife);
+                #pragma omp critical
+                {
+                    particulas.push_back(p);
+                }
+            }
+        } else if (scheduleType == "guided") {
+            #pragma omp parallel for schedule(guided, chunkSize)
+            for (int i = 0; i < numParticles; i++) {
+                Particula p(x, y, particleLife);
+                #pragma omp critical
+                {
+                    particulas.push_back(p);
+                }
+            }
+        } else {
+            cout << "Invalid schedule type!" << endl;
+            return;
         }
     }
 
@@ -143,7 +169,6 @@ public:
         }
     }
 
-
     // Comprueba si el cohete ha terminado su explosión
     bool isDone() {
         return exploded && particulas.empty();
@@ -151,13 +176,15 @@ public:
 };
 
 int main(int argc, char* argv[]) {
-    if (argc < 3) {
-        std::cout << "Uso: " << argv[0] << " <cantidad_de_particulas> <vida_de_particulas>" << std::endl;
+    if (argc < 5) {
+        std::cout << "Uso: " << argv[0] << " <cantidad_de_particulas> <vida_de_particulas> <tipo_de_schedule> <tamano_de_chunk>" << std::endl;
         return 1;
     }
 
     int numParticles = atoi(argv[1]); // Número de partículas por explosión
     int particleLife = atoi(argv[2]); // Vida de las partículas
+    string scheduleType = argv[3]; // Tipo de schedule (static, dynamic, guided)
+    int chunkSize = atoi(argv[4]); // Tamaño del chunk
 
     // Inicialización de SDL
     if (SDL_Init(SDL_INIT_VIDEO) < 0) {
@@ -192,8 +219,6 @@ int main(int argc, char* argv[]) {
     Uint32 startTime = SDL_GetTicks();
 
     // Bucle principal del programa
-    // Bucle principal del programa
-    // Bucle principal del programa
     while (!quit) {
         while (SDL_PollEvent(&e)) {
             if (e.type == SDL_QUIT) {
@@ -211,9 +236,9 @@ int main(int argc, char* argv[]) {
         SDL_RenderClear(renderer);
 
         // Actualizar cada cohete (paralelizado)
-        #pragma omp parallel for
+        #pragma omp parallel for schedule(dynamic, chunkSize)
         for (std::size_t i = 0; i < cohetes.size(); i++) {
-            cohetes[i].update();
+            cohetes[i].update(scheduleType, chunkSize); // Pass scheduleType and chunkSize
         }
 
         // Renderizado secuencial
@@ -223,7 +248,7 @@ int main(int argc, char* argv[]) {
 
         // Recolectar los índices de los cohetes que deben ser eliminados
         std::vector<std::size_t> indicesToRemove;
-        #pragma omp parallel for
+        #pragma omp parallel for schedule(dynamic, chunkSize)
         for (std::size_t i = 0; i < cohetes.size(); i++) {
             if (cohetes[i].isDone()) {
                 #pragma omp critical
@@ -237,7 +262,6 @@ int main(int argc, char* argv[]) {
         for (auto it = indicesToRemove.rbegin(); it != indicesToRemove.rend(); ++it) {
             cohetes.erase(cohetes.begin() + *it);
         }
-
 
         // Calcular y mostrar FPS
         frames++;
@@ -257,7 +281,6 @@ int main(int argc, char* argv[]) {
         SDL_RenderPresent(renderer);
         SDL_Delay(10);
     }
-
 
     // Limpiar recursos y salir
     SDL_DestroyRenderer(renderer);
