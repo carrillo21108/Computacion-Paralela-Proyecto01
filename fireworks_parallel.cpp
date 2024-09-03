@@ -1,3 +1,4 @@
+#include <omp.h>
 #include <SDL2/SDL.h>
 #include <random>
 #include <iostream>
@@ -20,10 +21,10 @@ public:
     int size; // Tamaño de la partícula
 
     // Constructor que inicializa la posición, velocidad, color, tamaño y vida de la partícula
-    Particula(float x, float y, int vidaParticula) {
+    Particula(float x, float y, int life) {
         this->x = x;
         this->y = y;
-        this->life = vidaParticula; // Asignar la vida de la partícula recibida como parámetro
+        this->life = life; // Vida de la partícula
 
         // Genera una dirección aleatoria en todas direcciones
         std::random_device rd;
@@ -76,10 +77,10 @@ public:
     vector<Particula> particulas; // Vector que contiene las partículas generadas por la explosión
     int size; // Tamaño del cohete
     int numParticles; // Número de partículas por explosión
-    int vidaParticula; // Vida de cada partícula
+    int particleLife; // Vida de las partículas
 
-    // Constructor que inicializa la posición y la altura de explosión del cohete
-    Cohete(float x, int numParticles, int vidaParticula) : numParticles(numParticles), vidaParticula(vidaParticula) {
+    // Constructor que inicializa la posición, la cantidad de partículas y la vida de las partículas
+    Cohete(float x, int numParticles, int particleLife) : numParticles(numParticles), particleLife(particleLife) {
         this->x = x;
         this->y = HEIGHT; // Empieza desde la parte inferior de la pantalla
         this->exploded = false; // Inicialmente no ha explotado
@@ -128,15 +129,20 @@ public:
         if (!exploded) {
             SDL_SetRenderDrawColor(renderer, 255, 255, 255, 255);
             SDL_Rect rect = { static_cast<int>(x - size / 2), static_cast<int>(y), size, size * 2 };
-            SDL_RenderFillRect(renderer, &rect); // Cohete como un rectángulo más grande
+            SDL_RenderFillRect(renderer, &rect);
         } else {
-            for (auto& p : particulas) {
-                SDL_SetRenderDrawColor(renderer, p.r, p.g, p.b, 255); // Partículas de colores aleatorios
-                SDL_Rect rect = { static_cast<int>(p.x), static_cast<int>(p.y), p.size, p.size };
-                SDL_RenderFillRect(renderer, &rect);
+            #pragma omp parallel for
+            for (std::size_t i = 0; i < particulas.size(); i++) {
+                SDL_SetRenderDrawColor(renderer, particulas[i].r, particulas[i].g, particulas[i].b, 255);
+                SDL_Rect rect = { static_cast<int>(particulas[i].x), static_cast<int>(particulas[i].y), particulas[i].size, particulas[i].size };
+                #pragma omp critical
+                {
+                    SDL_RenderFillRect(renderer, &rect);
+                }
             }
         }
     }
+
 
     // Comprueba si el cohete ha terminado su explosión
     bool isDone() {
@@ -146,12 +152,12 @@ public:
 
 int main(int argc, char* argv[]) {
     if (argc < 3) {
-        std::cout << "Uso: " << argv[0] << " <cantidad_de_particulas_por_cohete> <vida_de_particulas>" << std::endl;
+        std::cout << "Uso: " << argv[0] << " <cantidad_de_particulas> <vida_de_particulas>" << std::endl;
         return 1;
     }
 
     int numParticles = atoi(argv[1]); // Número de partículas por explosión
-    int vidaParticula = atoi(argv[2]); // Vida de cada partícula
+    int particleLife = atoi(argv[2]); // Vida de las partículas
 
     // Inicialización de SDL
     if (SDL_Init(SDL_INIT_VIDEO) < 0) {
@@ -186,6 +192,8 @@ int main(int argc, char* argv[]) {
     Uint32 startTime = SDL_GetTicks();
 
     // Bucle principal del programa
+    // Bucle principal del programa
+    // Bucle principal del programa
     while (!quit) {
         while (SDL_PollEvent(&e)) {
             if (e.type == SDL_QUIT) {
@@ -195,25 +203,41 @@ int main(int argc, char* argv[]) {
 
         // Generar un nuevo cohete con cierta probabilidad
         if (rand() % 100 < 2) {
-            cohetes.push_back(Cohete(dist(gen), numParticles, vidaParticula));
+            cohetes.push_back(Cohete(dist(gen), numParticles, particleLife));
         }
 
         // Limpiar la pantalla
         SDL_SetRenderDrawColor(renderer, 0, 0, 0, 255);
         SDL_RenderClear(renderer);
 
-        // Actualizar y renderizar cada cohete
+        // Actualizar cada cohete (paralelizado)
         #pragma omp parallel for
         for (std::size_t i = 0; i < cohetes.size(); i++) {
             cohetes[i].update();
         }
 
+        // Renderizado secuencial
+        for (std::size_t i = 0; i < cohetes.size(); i++) {
+            cohetes[i].render(renderer);
+        }
 
-        // Eliminar cohetes que han terminado su ciclo
-        cohetes.erase(
-            remove_if(cohetes.begin(), cohetes.end(), [](Cohete& c) { return c.isDone(); }),
-            cohetes.end()
-        );
+        // Recolectar los índices de los cohetes que deben ser eliminados
+        std::vector<std::size_t> indicesToRemove;
+        #pragma omp parallel for
+        for (std::size_t i = 0; i < cohetes.size(); i++) {
+            if (cohetes[i].isDone()) {
+                #pragma omp critical
+                {
+                    indicesToRemove.push_back(i);
+                }
+            }
+        }
+
+        // Eliminar los cohetes en orden inverso para evitar problemas de reindexación
+        for (auto it = indicesToRemove.rbegin(); it != indicesToRemove.rend(); ++it) {
+            cohetes.erase(cohetes.begin() + *it);
+        }
+
 
         // Calcular y mostrar FPS
         frames++;
@@ -231,8 +255,9 @@ int main(int argc, char* argv[]) {
 
         // Actualizar la pantalla
         SDL_RenderPresent(renderer);
-        SDL_Delay(20);
+        SDL_Delay(10);
     }
+
 
     // Limpiar recursos y salir
     SDL_DestroyRenderer(renderer);
@@ -241,4 +266,3 @@ int main(int argc, char* argv[]) {
 
     return 0;
 }
-
